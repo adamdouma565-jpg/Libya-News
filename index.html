@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f6f4a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>أخبار ليبيا</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f3f5f2;--panel:#fff;--ink:#16201b;--mute:#5d6b63;--line:#d9e0db;--green:#1f6f4a;--red:#b3262e;--blue:#27567a}
+@media (prefers-color-scheme:dark){:root{--bg:#101614;--panel:#18211d;--ink:#e8efea;--mute:#9aa9a0;--line:#2a3730;--green:#4cb383;--red:#e06a71;--blue:#6aa3cf}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans Arabic",system-ui,sans-serif;line-height:1.7}
+header{padding:20px 16px 8px;max-width:720px;margin:auto}
+h1{margin:0;font-size:1.6rem}
+.sub{color:var(--mute);font-size:.9rem;margin:2px 0 12px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 14px;border-radius:99px;cursor:pointer}
+button[aria-pressed=true]{background:var(--green);border-color:var(--green);color:#fff}
+button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.sp{flex:1}
+main{max-width:720px;margin:auto;padding:4px 16px 40px}
+#status{color:var(--mute);font-size:.85rem;margin:8px 0}
+article{background:var(--panel);border-inline-start:4px solid var(--c);padding:10px 14px;margin:10px 0;border-radius:6px}
+article a{color:inherit;text-decoration:none;font-weight:600}
+article a:hover{text-decoration:underline}
+.meta{color:var(--mute);font-size:.82rem}
+.meta b{color:var(--c)}
+article p{margin:4px 0 0;color:var(--mute);font-size:.92rem}
+h2{font-size:1.05rem;margin:22px 0 4px}
+.links{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.links a{display:block;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 12px;color:var(--ink);text-decoration:none}
+.links small{display:block;color:var(--mute)}
+.o{--c:var(--green)}.c{--c:var(--red)}.s{--c:var(--blue)}
+</style>
+</head>
+<body>
+<header>
+  <h1>أخبار ليبيا</h1>
+  <p class="sub">مصادر رسمية وقنوات ومواقع عالمية معروفة</p>
+  <div class="bar" id="tabs"></div>
+</header>
+<main>
+  <div id="status">جارٍ التحميل…</div>
+  <div id="list"></div>
+  <h2>روابط مباشرة لمصادر بلا خلاصة آلية</h2>
+  <div class="links" id="links"></div>
+</main>
+<script>
+// type: o = رسمي، c = قناة، s = موقع. feed = رابط RSS، وإلا يظهر في قائمة الروابط.
+const SOURCES = [
+  {n:"أخبار الأمم المتحدة",t:"o",feed:"https://news.un.org/feed/subscribe/ar/news/all/rss.xml"},
+  {n:"UN News",t:"o",feed:"https://news.un.org/feed/subscribe/en/news/all/rss.xml"},
+  {n:"الجزيرة",t:"c",feed:"https://www.aljazeera.net/xml/rss/all.xml"},
+  {n:"Al Jazeera English",t:"c",feed:"https://www.aljazeera.com/xml/rss/all.xml"},
+  {n:"بي بي سي عربي",t:"c",feed:"https://feeds.bbci.co.uk/arabic/rss.xml"},
+  {n:"BBC Africa",t:"c",feed:"https://feeds.bbci.co.uk/news/world/africa/rss.xml"},
+  {n:"فرانس 24",t:"c",feed:"https://www.france24.com/ar/rss"},
+  {n:"دويتشه فيله",t:"c",feed:"https://rss.dw.com/xml/rss-ar-all"},
+  {n:"Libya Herald",t:"s",feed:"https://libyaherald.com/feed/"},
+  {n:"وكالة الأنباء الليبية",t:"o",site:"https://lana.gov.ly",d:"رسمي، محلي"},
+  {n:"بعثة الأمم المتحدة (UNSMIL)",t:"o",site:"https://unsmil.unmissions.org/ar",d:"رسمي، دولي"},
+  {n:"بوابة الوسط",t:"s",site:"https://alwasat.ly",d:"موقع محلي"},
+  {n:"Libya Observer",t:"s",site:"https://libyaobserver.ly",d:"موقع محلي"},
+  {n:"رويترز - ليبيا",t:"s",site:"https://www.reuters.com/world/africa/",d:"موقع عالمي"}
+];
+const LIBYA = /ليبيا|ليبي|طرابلس|بنغازي|سرت|مصراتة|طبرق|الدبيبة|حفتر|المنفي|Libya|Libyan|Tripoli|Benghazi|Dbeibah|Haftar/i;
+const TYPES = {all:"الكل",o:"رسمية",c:"قنوات",s:"مواقع"};
+const NAMES = {o:"رسمي",c:"قناة",s:"موقع"};
+let tab = "all", onlyLibya = true, items = [], failed = [];
+
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
+const strip = h => { const d = document.createElement("div"); d.innerHTML = h || ""; return (d.textContent || "").trim(); };
+
+function renderTabs() {
+  const bar = $("tabs"); bar.textContent = "";
+  for (const k in TYPES) {
+    const b = el("button", "", TYPES[k]); b.setAttribute("aria-pressed", tab === k);
+    b.onclick = () => { tab = k; renderTabs(); renderList(); }; bar.append(b);
+  }
+  bar.append(el("span", "sp"));
+  const f = el("button", "", "ليبيا فقط"); f.setAttribute("aria-pressed", onlyLibya);
+  f.onclick = () => { onlyLibya = !onlyLibya; renderTabs(); renderList(); }; bar.append(f);
+  const r = el("button", "", "تحديث"); r.onclick = load; bar.append(r);
+}
+
+function renderList() {
+  const list = $("list"); list.textContent = "";
+  const shown = items.filter(i => (tab === "all" || i.t === tab) && (!onlyLibya || i.libya))
+                     .sort((a, b) => b.date - a.date).slice(0, 80);
+  for (const i of shown) {
+    const a = el("article", i.t);
+    const link = el("a", "", i.title); link.href = i.link; link.target = "_blank"; link.rel = "noopener";
+    const m = el("div", "meta"); const b = el("b", "", i.src);
+    m.append(b, " · " + NAMES[i.t] + " · " + i.date.toLocaleString("ar", {dateStyle:"medium", timeStyle:"short"}));
+    a.append(link, m);
+    if (i.desc) a.append(el("p", "", i.desc.slice(0, 160)));
+    list.append(a);
+  }
+  let s = shown.length + " خبر";
+  if (!shown.length) s = onlyLibya ? "لا توجد أخبار عن ليبيا الآن. أوقف «ليبيا فقط» لرؤية كل الأخبار." : "لا توجد أخبار.";
+  if (failed.length) s += " · تعذّر تحميل: " + failed.join("، ");
+  $("status").textContent = s;
+}
+
+async function fetchFeed(src) {
+  const u = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(src.feed);
+  const r = await fetch(u); const j = await r.json();
+  if (j.status !== "ok") throw new Error("feed");
+  return j.items.map(x => {
+    const desc = strip(x.description);
+    return {src: src.n, t: src.t, title: strip(x.title), link: x.link, desc,
+      date: new Date((x.pubDate || "").replace(" ", "T") + "Z"),
+      libya: LIBYA.test(x.title + " " + desc)};
+  });
+}
+
+async function load() {
+  $("status").textContent = "جارٍ التحميل…"; failed = [];
+  const feeds = SOURCES.filter(s => s.feed);
+  const res = await Promise.allSettled(feeds.map(fetchFeed));
+  items = [];
+  res.forEach((r, i) => r.status === "fulfilled" ? items.push(...r.value) : failed.push(feeds[i].n));
+  items = items.filter(i => !isNaN(i.date));
+  renderList();
+}
+
+function renderLinks() {
+  for (const s of SOURCES.filter(x => x.site)) {
+    const a = el("a", s.t); a.href = s.site; a.target = "_blank"; a.rel = "noopener";
+    a.append(el("span", "", s.n), el("small", "", s.d)); $("links").append(a);
+  }
+}
+renderTabs(); renderLinks(); load();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
